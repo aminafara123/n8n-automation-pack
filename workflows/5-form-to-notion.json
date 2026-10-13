@@ -1,0 +1,201 @@
+{
+  "name": "5 - Form to Notion + Slack",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Form -> Notion\nForm POST -> clean fields -> create a Notion database page -> Slack notify.\n\n**Credentials:** Notion, Slack.\nYour Notion DB needs properties: Name (title), Email (email), Topic (text), Message (text).",
+        "width": 360,
+        "height": 260
+      },
+      "id": "acef2dd7-77eb-5f81-ac69-03d4218e6305",
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "contact-form",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "c87a0898-7b32-57bc-807f-e483e2be448f",
+      "name": "Form Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        160,
+        0
+      ],
+      "webhookId": "c408facb-b3c9-5be5-a8e4-d3a419daff19"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c8632057-2bf4-5a57-8923-5872445eae95",
+              "name": "name",
+              "value": "={{ ($json.body.name || '').trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "9b7d6e53-223b-5d59-9d97-a0a2440563e7",
+              "name": "email",
+              "value": "={{ ($json.body.email || '').toLowerCase().trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "6a539c3f-7473-549e-a53f-a02879174ec8",
+              "name": "topic",
+              "value": "={{ ($json.body.topic || 'General').trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "35d9367e-c21c-56b2-afe8-9c52f5dff1ba",
+              "name": "message",
+              "value": "={{ ($json.body.message || '').trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "38f31009-5238-5ec9-b711-2881fcf4bec9",
+              "name": "submitted_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "4873c0cc-5afe-52d4-8222-ed48a55673ff",
+      "name": "Clean Submission",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        380,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "create",
+        "databaseId": {
+          "__rl": true,
+          "value": "YOUR_NOTION_DATABASE_ID",
+          "mode": "id"
+        },
+        "title": "={{ $json.name }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Email|email",
+              "emailValue": "={{ $json.email }}"
+            },
+            {
+              "key": "Topic|rich_text",
+              "textContent": "={{ $json.topic }}"
+            },
+            {
+              "key": "Message|rich_text",
+              "textContent": "={{ $json.message }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f63c6a92-588d-5ee5-965e-275f577ca3c1",
+      "name": "Create Notion Page",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        600,
+        0
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "REPLACE_ME",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "accessToken",
+        "resource": "message",
+        "operation": "post",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0000000000",
+          "mode": "id"
+        },
+        "text": "=:memo: New submission from *{{ $('Clean Submission').item.json.name }}* ({{ $('Clean Submission').item.json.email }}) - topic: {{ $('Clean Submission').item.json.topic }}",
+        "otherOptions": {}
+      },
+      "id": "c600de8e-01f6-54f8-acb7-f6766c046d5e",
+      "name": "Notify Channel",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        820,
+        0
+      ],
+      "credentials": {
+        "slackApi": {
+          "id": "REPLACE_ME",
+          "name": "Slack account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Form Webhook": {
+      "main": [
+        [
+          {
+            "node": "Clean Submission",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean Submission": {
+      "main": [
+        [
+          {
+            "node": "Create Notion Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Notion Page": {
+      "main": [
+        [
+          {
+            "node": "Notify Channel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [],
+  "versionId": "68e31f8d-b790-53fa-a6d2-739551d2682d"
+}

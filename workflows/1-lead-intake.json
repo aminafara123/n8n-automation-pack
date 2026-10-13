@@ -1,0 +1,193 @@
+{
+  "name": "1 - Lead Intake to Sheet + Slack",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Lead intake\nForm POST -> clean fields -> append to Google Sheet -> Slack alert to sales.\n\n**Credentials:** Google Sheets, Slack.\nSet the Sheet ID and Slack channel before activating.",
+        "width": 360,
+        "height": 240
+      },
+      "id": "c43c1b0d-3f6b-5cea-b050-c88b47a608d9",
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-intake",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "23a982e5-d0ef-5378-9633-7477680f5907",
+      "name": "Form Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        160,
+        0
+      ],
+      "webhookId": "7e11a020-05e7-56f9-88e8-8c4f4dc5537a"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c8632057-2bf4-5a57-8923-5872445eae95",
+              "name": "name",
+              "value": "={{ ($json.body.name || '').trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "9b7d6e53-223b-5d59-9d97-a0a2440563e7",
+              "name": "email",
+              "value": "={{ ($json.body.email || '').toLowerCase().trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "db91b5ff-a1bb-5500-afa4-4a76ac3536ba",
+              "name": "company",
+              "value": "={{ ($json.body.company || '').trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "35d9367e-c21c-56b2-afe8-9c52f5dff1ba",
+              "name": "message",
+              "value": "={{ ($json.body.message || '').trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "42a8ab54-9c1e-51d1-9cce-58554be7d1f7",
+              "name": "received_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c290df14-7cb3-557e-a525-bfbb82da3331",
+      "name": "Clean Lead Fields",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        380,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Leads",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": []
+        },
+        "options": {}
+      },
+      "id": "42473b24-4359-5919-bd9f-089e4fb6725d",
+      "name": "Append Lead",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        600,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "accessToken",
+        "resource": "message",
+        "operation": "post",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0000000000",
+          "mode": "id"
+        },
+        "text": "=:inbox_tray: New lead *{{ $('Clean Lead Fields').item.json.name }}* ({{ $('Clean Lead Fields').item.json.email }}) from {{ $('Clean Lead Fields').item.json.company }}\n>{{ $('Clean Lead Fields').item.json.message }}",
+        "otherOptions": {}
+      },
+      "id": "5edf2f3b-7194-5a31-82d8-363096a8aaa9",
+      "name": "Notify Sales",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        820,
+        0
+      ],
+      "credentials": {
+        "slackApi": {
+          "id": "REPLACE_ME",
+          "name": "Slack account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Form Webhook": {
+      "main": [
+        [
+          {
+            "node": "Clean Lead Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean Lead Fields": {
+      "main": [
+        [
+          {
+            "node": "Append Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append Lead": {
+      "main": [
+        [
+          {
+            "node": "Notify Sales",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [],
+  "versionId": "e5cba4ca-1560-52df-828b-8f6bf51e77f2"
+}

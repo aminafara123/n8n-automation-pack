@@ -1,0 +1,228 @@
+{
+  "name": "3 - RSS to Social Post (LLM)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## RSS -> social\nEvery 6h: read a feed -> take the top item -> LLM writes a <=60-word post -> Slack as a review queue.\n\nTo auto-publish, add an X/Twitter or LinkedIn node after *Format Post* (or use HTTP Request against their API). Slack is the human-review step.",
+        "width": 360,
+        "height": 260
+      },
+      "id": "c5302d74-aa35-5925-9d23-7d848d176423",
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "id": "c20ac2df-61cd-52c2-9713-67a0253b15f6",
+      "name": "Every 6 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        160,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.RSS_FEED_URL || 'https://hnrss.org/frontpage' }}",
+        "options": {}
+      },
+      "id": "cf660cdd-a626-504e-b36c-5dfb1a35c9ff",
+      "name": "Read RSS Feed",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.1,
+      "position": [
+        380,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "maxItems": 1
+      },
+      "id": "402ad7ed-19ac-51ea-863c-6d29838ddc70",
+      "name": "Top Item",
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        600,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LLM_BASE_URL || 'http://127.0.0.1:11434/v1' }}/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"{{ $env.LLM_MODEL || 'qwen3:30b-a3b-instruct-2507-q4_K_M' }}\",\n  \"messages\": [\n    { \"role\": \"system\", \"content\": \"You write concise, engaging social media posts. Given an article title and summary, write ONE post under 60 words in plain text. No hashtags unless natural, no quotes around the post, output only the post text.\" },\n    { \"role\": \"user\", \"content\": {{ JSON.stringify(\"Title: \" + ($json.title || \"\") + \"\\n\\nSummary: \" + ($json.contentSnippet || $json.content || \"\") + \"\\n\\nLink: \" + ($json.link || \"\")) }} }\n  ],\n  \"temperature\": 0.6,\n  \"stream\": false\n}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "a5c1cb30-804c-58a5-aafe-731f23e7f709",
+      "name": "Summarize (LLM)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        820,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "804745dd-1701-588d-902d-76908c5e1a8f",
+              "name": "slack_message",
+              "value": "={{ $json.choices[0].message.content }}\n\nSource: {{ $('Top Item').item.json.link }}",
+              "type": "string"
+            },
+            {
+              "id": "38826d85-5f61-59d4-9197-cc06bf69af32",
+              "name": "x_linkedin_draft",
+              "value": "={{ $json.choices[0].message.content }}",
+              "type": "string"
+            },
+            {
+              "id": "05e657cc-b503-553f-b8f8-5e01262c99ac",
+              "name": "source_link",
+              "value": "={{ $('Top Item').item.json.link }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "0a80db48-63a7-5507-a809-5e5be3678d53",
+      "name": "Format Post",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1040,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "accessToken",
+        "resource": "message",
+        "operation": "post",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0000000000",
+          "mode": "id"
+        },
+        "text": "={{ $json.slack_message }}",
+        "otherOptions": {}
+      },
+      "id": "d9f58cd9-2a2c-5d2d-83d4-7331a540779f",
+      "name": "Post to Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        1260,
+        0
+      ],
+      "credentials": {
+        "slackApi": {
+          "id": "REPLACE_ME",
+          "name": "Slack account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 6 Hours": {
+      "main": [
+        [
+          {
+            "node": "Read RSS Feed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read RSS Feed": {
+      "main": [
+        [
+          {
+            "node": "Top Item",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Top Item": {
+      "main": [
+        [
+          {
+            "node": "Summarize (LLM)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarize (LLM)": {
+      "main": [
+        [
+          {
+            "node": "Format Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Post": {
+      "main": [
+        [
+          {
+            "node": "Post to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [],
+  "versionId": "6deee66b-5205-5327-8a9f-9d6e4c5cc817"
+}

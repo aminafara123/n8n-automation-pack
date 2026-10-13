@@ -1,0 +1,194 @@
+{
+  "name": "4 - Daily Report Digest (LLM -> Email)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Daily report\n08:00 daily: read a metrics sheet -> aggregate rows -> LLM writes an executive digest -> email it.\n\n**AI-generated summary. Review before forwarding.**\nSet the Sheet ID, SMTP from/to addresses.",
+        "width": 360,
+        "height": 260
+      },
+      "id": "59164575-14cc-58be-9872-fdd40cb42d27",
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "d090857b-24d0-53db-a8cb-22e4effb305d",
+      "name": "Every Morning 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        160,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Metrics",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "795954cf-9380-5139-a8c4-e661bb76caf9",
+      "name": "Pull Metrics",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        380,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "47efc1e6-2e66-5459-9545-ad5dc46edf66",
+      "name": "Aggregate Rows",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        600,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LLM_BASE_URL || 'http://127.0.0.1:11434/v1' }}/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"{{ $env.LLM_MODEL || 'qwen3:30b-a3b-instruct-2507-q4_K_M' }}\",\n  \"messages\": [\n    { \"role\": \"system\", \"content\": \"You are a data analyst. Given rows of daily metrics as JSON, write a brief executive email in plain text: 3 to 5 bullet highlights and one risk or action. Be concise and factual. Do not invent numbers that are not in the data.\" },\n    { \"role\": \"user\", \"content\": {{ JSON.stringify($json.data) }} }\n  ],\n  \"temperature\": 0.3,\n  \"stream\": false\n}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "0ae9162a-56a3-5295-9ada-229b6c340fa9",
+      "name": "Digest (LLM)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        820,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "reports@example.com",
+        "toEmail": "you@example.com",
+        "subject": "=Daily Report - {{ $now.toFormat('yyyy-LL-dd') }}",
+        "emailFormat": "text",
+        "text": "={{ $json.choices[0].message.content }}\n\n-- AI-generated digest. A human must review before acting on it. --",
+        "options": {}
+      },
+      "id": "2772383d-e0aa-5df9-8fc6-36750c5ea573",
+      "name": "Send Report",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1040,
+        0
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_ME",
+          "name": "SMTP account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every Morning 08:00": {
+      "main": [
+        [
+          {
+            "node": "Pull Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pull Metrics": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Rows": {
+      "main": [
+        [
+          {
+            "node": "Digest (LLM)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Digest (LLM)": {
+      "main": [
+        [
+          {
+            "node": "Send Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [],
+  "versionId": "114b1009-d56b-5c75-9488-442ce28de953"
+}

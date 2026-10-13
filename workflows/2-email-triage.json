@@ -1,0 +1,246 @@
+{
+  "name": "2 - Email Triage + Draft Reply (LLM)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Email triage\nGmail trigger -> local LLM classifies + drafts a reply -> apply label -> create a Gmail draft.\n\n**AI-generated drafts. A human reviews and sends every reply.**\nCreate the Gmail label first and paste its ID into *Add Label*.",
+        "width": 360,
+        "height": 260
+      },
+      "id": "972242ce-7ac9-59d2-bb5b-39e734cae054",
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "q": "is:unread category:primary"
+        },
+        "options": {}
+      },
+      "id": "9064c43e-f573-544a-8461-5a4a9836e723",
+      "name": "Gmail Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        160,
+        0
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_ME",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LLM_BASE_URL || 'http://127.0.0.1:11434/v1' }}/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"{{ $env.LLM_MODEL || 'qwen3:30b-a3b-instruct-2507-q4_K_M' }}\",\n  \"messages\": [\n    { \"role\": \"system\", \"content\": \"You are an email triage assistant. Reply with STRICT JSON only, no prose, using exactly these keys: category (one of Sales, Support, Billing, Spam, Other), priority (High, Medium, Low), draft_reply (a short, professional plain-text reply). Do not invent facts; keep the draft generic where unsure.\" },\n    { \"role\": \"user\", \"content\": {{ JSON.stringify(\"Subject: \" + ($json.subject || $json.Subject || \"(no subject)\") + \"\\n\\nFrom: \" + ($json.from || $json.From || \"\") + \"\\n\\nBody:\\n\" + ($json.snippet || $json.text || $json.textPlain || \"\")) }} }\n  ],\n  \"temperature\": 0.2,\n  \"stream\": false\n}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "7f1ab030-b2f2-5e14-8d7d-60b4aeceb8d2",
+      "name": "Classify + Draft (LLM)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        380,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "718bc983-7786-5cee-a2a8-f53030d440cf",
+              "name": "category",
+              "value": "={{ JSON.parse($json.choices[0].message.content).category }}",
+              "type": "string"
+            },
+            {
+              "id": "ed302b89-0da2-56c2-90b7-9d4e845cbfff",
+              "name": "priority",
+              "value": "={{ JSON.parse($json.choices[0].message.content).priority }}",
+              "type": "string"
+            },
+            {
+              "id": "9a12bd96-5f36-5366-8c49-2c9b163e695c",
+              "name": "draft_reply",
+              "value": "={{ JSON.parse($json.choices[0].message.content).draft_reply }}",
+              "type": "string"
+            },
+            {
+              "id": "069b9197-2db5-556b-81b2-5efc9bef1a42",
+              "name": "message_id",
+              "value": "={{ $('Gmail Trigger').item.json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "71697fe5-e9b9-56ad-ab8e-1e4f49264dc8",
+              "name": "thread_id",
+              "value": "={{ $('Gmail Trigger').item.json.threadId }}",
+              "type": "string"
+            },
+            {
+              "id": "cff451c8-a483-5bf0-a3ac-3b8122249b7b",
+              "name": "reply_to",
+              "value": "={{ $('Gmail Trigger').item.json.from || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "6a163dda-5cba-5824-8283-e9231cc43e40",
+              "name": "subject",
+              "value": "={{ $('Gmail Trigger').item.json.subject || '(no subject)' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f524624a-3f7c-5cd8-9b27-f1855f49fc0a",
+      "name": "Parse LLM JSON",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        600,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "addLabels",
+        "messageId": "={{ $json.message_id }}",
+        "labelIds": [
+          "Label_REPLACE_ME"
+        ]
+      },
+      "id": "ed929452-709d-5655-95d3-857a8e4c530f",
+      "name": "Add Label",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        820,
+        0
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_ME",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "draft",
+        "operation": "create",
+        "subject": "=Re: {{ $('Parse LLM JSON').item.json.subject }}",
+        "emailType": "text",
+        "message": "={{ $('Parse LLM JSON').item.json.draft_reply }}\n\n-- AI-generated draft. Review before sending. --",
+        "options": {
+          "threadId": "={{ $('Parse LLM JSON').item.json.thread_id }}",
+          "sendTo": "={{ $('Parse LLM JSON').item.json.reply_to }}"
+        }
+      },
+      "id": "8fc8c75a-9751-5559-a230-924d63112ce3",
+      "name": "Create Draft Reply",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1040,
+        0
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_ME",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Classify + Draft (LLM)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify + Draft (LLM)": {
+      "main": [
+        [
+          {
+            "node": "Parse LLM JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse LLM JSON": {
+      "main": [
+        [
+          {
+            "node": "Add Label",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Label": {
+      "main": [
+        [
+          {
+            "node": "Create Draft Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [],
+  "versionId": "d600cba6-c905-53c2-b370-89fc0ec93561"
+}
